@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # tmux Integration for Claude Session Manager
 # Handles sidebar display, session switching, and key bindings

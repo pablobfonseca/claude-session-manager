@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Claude Code Session Manager Installer
 # Quick installation script with PATH integration

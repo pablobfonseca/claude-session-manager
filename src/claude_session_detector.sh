@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Claude Code Session Detector
 # Detects and monitors Claude Code AI sessions across tmux environment

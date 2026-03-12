@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Claude Code Session Manager
 # Main entry point for managing Claude Code AI sessions in tmux
