@@ -32,22 +32,23 @@ Requires: `tmux 3.0+`, `bash 4.0+`, `fzf`
 # Show session status popup
 claude-session-manager show
 
-# Open fzf session picker with preview
+# Open fzf picker — shows each Claude instance by project name
+# Selecting an entry switches to the exact pane (session → window → pane)
 claude-session-manager picker
 
-# List all Claude sessions
+# List all Claude instances with status
 claude-session-manager list
 
-# Jump to sessions by status
+# Jump to first pane with a given status
 claude-session-manager jump approval    # needs your attention
 claude-session-manager jump active      # currently working
 claude-session-manager jump idle        # waiting for input
 
-# Check specific session
+# Check specific session status
 claude-session-manager status <session>
 
-# Switch to session
-claude-session-manager switch <session>
+# Switch to a specific pane or session
+claude-session-manager switch <pane_id>
 ```
 
 ### Recommended tmux.conf bindings
