@@ -67,7 +67,7 @@ has_claude_processes() {
     local session_name="$1"
     
     # Get all panes in the session
-    local panes=$(tmux list-panes -t "$session_name" -a -F "#{pane_id}")
+    local panes=$(tmux list-panes -t "$session_name" -F "#{pane_id}" 2>/dev/null) || return 1
     
     for pane in $panes; do
         # Get the command running in the pane
@@ -133,7 +133,7 @@ analyze_session_status() {
     # Get the most recent output from all panes
     local recent_output=""
     local panes
-    panes=$(tmux list-panes -t "$session_name" -a -F "#{pane_id}" 2>/dev/null) || true
+    panes=$(tmux list-panes -t "$session_name" -F "#{pane_id}" 2>/dev/null) || true
 
     for pane in $panes; do
         local pane_output
