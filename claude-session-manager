@@ -5,7 +5,7 @@
 # Author: Shikamaru <shikamarunaraclaw@gmail.com>
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VERSION="1.0.0"
+VERSION="1.1.0"
 
 # Source the integration scripts
 TMUX_SCRIPT="$SCRIPT_DIR/src/tmux_integration.sh"
@@ -99,10 +99,17 @@ CLAUDE_PATTERNS=("claude" "anthropic" "ai-session" "claude-code" "cc-")
 
 # Color theme (cyberpunk style)
 COLOR_ACTIVE="#00ff41"      # Matrix green
-COLOR_WAITING="#ffff00"     # Cyber yellow  
+COLOR_WAITING="#ffff00"     # Cyber yellow
 COLOR_COMPLETE="#00ffff"    # Electric cyan
 COLOR_ERROR="#ff007f"       # Neon pink
 COLOR_STARTING="#bf00ff"    # Electric purple
+
+# Status detection patterns (customize for your Claude Code output)
+ERROR_PATTERNS=("error" "failed" "exception" "traceback" "fatal")
+WAITING_PATTERNS=("waiting" "input" "prompt" "continue" "press" "enter")
+COMPLETE_PATTERNS=("complete" "done" "finished" "success" "✓" "✅")
+ACTIVE_PATTERNS=("thinking" "processing" "working" "analyzing" "generating")
+STARTING_PATTERNS=("starting" "initializing" "loading" "connecting")
 EOF
         echo "✅ Created configuration file: $CONFIG_FILE"
     fi
@@ -279,6 +286,10 @@ check_dependencies() {
             echo "⚠️  bash 4.0+ required (found: $BASH_VERSION)"
             exit 1
         fi
+    fi
+
+    if ! command -v fzf >/dev/null 2>&1; then
+        missing_deps+=("fzf")
     fi
 
     if [[ ${#missing_deps[@]} -gt 0 ]]; then

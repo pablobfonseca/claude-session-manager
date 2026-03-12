@@ -23,6 +23,18 @@ COLOR_ERROR="#ff007f"       # Neon pink
 COLOR_STARTING="#bf00ff"    # Electric purple
 COLOR_INACTIVE="#8b93a6"    # Muted gray
 
+ANSI_RESET="\033[0m"
+ANSI_BOLD="\033[1m"
+
+# Convert hex color (#RRGGBB) to ANSI 24-bit escape
+hex_to_ansi() {
+    local hex="${1#\#}"
+    local r=$((16#${hex:0:2}))
+    local g=$((16#${hex:2:2}))
+    local b=$((16#${hex:4:2}))
+    printf '\033[38;2;%d;%d;%dm' "$r" "$g" "$b"
+}
+
 # Default status detection patterns (overridable via config)
 ERROR_PATTERNS=("error" "failed" "exception" "traceback" "fatal")
 WAITING_PATTERNS=("waiting" "input" "prompt" "continue" "press" "enter")
@@ -77,6 +89,31 @@ has_claude_processes() {
                 fi
             done
         fi
+    done
+    return 1
+}
+
+# Check if any pane is running the claude CLI binary
+has_claude_binary() {
+    local session_name="$1"
+    local panes
+    panes=$(tmux list-panes -t "$session_name" -F "#{pane_pid}" 2>/dev/null) || return 1
+
+    for pane_pid in $panes; do
+        # Check pane process and children for claude binary
+        local all_pids="$pane_pid"
+        if command -v pgrep >/dev/null 2>&1; then
+            all_pids+=" $(pgrep -P "$pane_pid" 2>/dev/null || true)"
+        fi
+
+        for pid in $all_pids; do
+            local args
+            args=$(ps -p "$pid" -o args= 2>/dev/null) || continue
+            # Match: claude, npx claude, node .../claude, bunx claude
+            if [[ "$args" =~ (^|/)claude( |$) ]] || [[ "$args" =~ npx[[:space:]]+claude ]] || [[ "$args" =~ bunx[[:space:]]+claude ]]; then
+                return 0
+            fi
+        done
     done
     return 1
 }
@@ -157,12 +194,24 @@ get_claude_sessions() {
     local sessions=$(tmux list-sessions -F "#{session_name}")
     
     for session in $sessions; do
-        # Check if this is a Claude Code session
-        if is_claude_session "$session" || has_claude_processes "$session"; then
-            local status=$(analyze_session_status "$session")
-            local last_activity=$(tmux display-message -t "$session" -p "#{session_activity}" 2>/dev/null || echo "0")
-            
-            # Create session entry
+        local detected=false
+
+        # Fast path: name-based detection
+        if is_claude_session "$session"; then
+            detected=true
+        # Precise: check for claude binary
+        elif has_claude_binary "$session"; then
+            detected=true
+        # Fallback: fuzzy process matching
+        elif has_claude_processes "$session"; then
+            detected=true
+        fi
+
+        if [[ "$detected" == true ]]; then
+            local status
+            status=$(analyze_session_status "$session")
+            local last_activity
+            last_activity=$(tmux display-message -t "$session" -p "#{session_activity}" 2>/dev/null || echo "0")
             sessions_data+="$session|$status|$last_activity"$'\n'
         fi
     done
@@ -175,77 +224,90 @@ format_session_display() {
     local session_name="$1"
     local status="$2"
     local max_width="${3:-20}"
-    
-    # Choose status indicator and color
-    local indicator=""
-    local color=""
-    
+    local format="${4:-tmux}"
+
+    local indicator="" color=""
+
     case "$status" in
-        "active")
-            indicator="$STATUS_ACTIVE"
-            color="$COLOR_ACTIVE"
-            ;;
-        "waiting")
-            indicator="$STATUS_WAITING"
-            color="$COLOR_WAITING"
-            ;;
-        "complete")
-            indicator="$STATUS_COMPLETE"
-            color="$COLOR_COMPLETE"
-            ;;
-        "error")
-            indicator="$STATUS_ERROR"
-            color="$COLOR_ERROR"
-            ;;
-        "starting")
-            indicator="$STATUS_STARTING"
-            color="$COLOR_STARTING"
-            ;;
-        *)
-            indicator=" "
-            color="$COLOR_INACTIVE"
-            ;;
+        "active")   indicator="$STATUS_ACTIVE";   color="$COLOR_ACTIVE" ;;
+        "waiting")  indicator="$STATUS_WAITING";   color="$COLOR_WAITING" ;;
+        "complete") indicator="$STATUS_COMPLETE";  color="$COLOR_COMPLETE" ;;
+        "error")    indicator="$STATUS_ERROR";     color="$COLOR_ERROR" ;;
+        "starting") indicator="$STATUS_STARTING";  color="$COLOR_STARTING" ;;
+        *)          indicator=" ";                  color="$COLOR_INACTIVE" ;;
     esac
-    
-    # Truncate session name if too long
+
     local display_name="$session_name"
     if [[ ${#session_name} -gt $((max_width - 3)) ]]; then
         display_name="${session_name:0:$((max_width - 6))}..."
     fi
-    
-    # Format with tmux color codes
-    echo "#[fg=$color]$indicator $display_name#[default]"
+
+    if [[ "$format" == "ansi" ]]; then
+        local ansi_color
+        ansi_color=$(hex_to_ansi "$color")
+        echo "${ansi_color}${indicator} ${display_name}${ANSI_RESET}"
+    else
+        echo "#[fg=$color]$indicator $display_name#[default]"
+    fi
 }
 
 # Generate tmux sidebar content
 generate_sidebar_content() {
-    local sessions_data=$(get_claude_sessions)
+    local format="tmux"
+    if [[ "$1" == "--ansi" ]]; then
+        format="ansi"
+    fi
+
+    local sessions_data
+    sessions_data=$(get_claude_sessions)
     local sidebar_content=""
     local session_count=0
-    
+
     # Header
-    sidebar_content+="#[fg=$COLOR_COMPLETE,bold]🤖 Claude Code#[default]"$'\n'
-    sidebar_content+="#[fg=$COLOR_INACTIVE]───────────────#[default]"$'\n'
-    
-    # Process sessions
+    if [[ "$format" == "ansi" ]]; then
+        local header_color
+        header_color=$(hex_to_ansi "$COLOR_COMPLETE")
+        local inactive_color
+        inactive_color=$(hex_to_ansi "$COLOR_INACTIVE")
+        sidebar_content+="${ANSI_BOLD}${header_color}🤖 Claude Code${ANSI_RESET}"$'\n'
+        sidebar_content+="${inactive_color}───────────────${ANSI_RESET}"$'\n'
+    else
+        sidebar_content+="#[fg=$COLOR_COMPLETE,bold]🤖 Claude Code#[default]"$'\n'
+        sidebar_content+="#[fg=$COLOR_INACTIVE]───────────────#[default]"$'\n'
+    fi
+
+    # Sessions
     if [[ -n "$sessions_data" && "$sessions_data" != "[]" ]]; then
         while IFS='|' read -r session status activity; do
             if [[ -n "$session" ]]; then
-                sidebar_content+="$(format_session_display "$session" "$status" 15)"$'\n'
+                sidebar_content+="$(format_session_display "$session" "$status" 15 "$format")"$'\n'
                 ((session_count++))
             fi
         done <<< "$sessions_data"
     fi
-    
-    # Footer with controls
+
+    # Footer
     if [[ $session_count -eq 0 ]]; then
-        sidebar_content+="#[fg=$COLOR_INACTIVE]No active sessions#[default]"$'\n'
+        if [[ "$format" == "ansi" ]]; then
+            local inactive_color
+            inactive_color=$(hex_to_ansi "$COLOR_INACTIVE")
+            sidebar_content+="${inactive_color}No active sessions${ANSI_RESET}"$'\n'
+        else
+            sidebar_content+="#[fg=$COLOR_INACTIVE]No active sessions#[default]"$'\n'
+        fi
     fi
-    
+
     sidebar_content+=""$'\n'
-    sidebar_content+="#[fg=$COLOR_INACTIVE][sessionx: o]#[default]"$'\n'
-    sidebar_content+="#[fg=$COLOR_INACTIVE][refresh: r]#[default]"
-    
+    if [[ "$format" == "ansi" ]]; then
+        local inactive_color
+        inactive_color=$(hex_to_ansi "$COLOR_INACTIVE")
+        sidebar_content+="${inactive_color}[picker: C-l]${ANSI_RESET}"$'\n'
+        sidebar_content+="${inactive_color}[refresh: C-r]${ANSI_RESET}"
+    else
+        sidebar_content+="#[fg=$COLOR_INACTIVE][picker: C-l]#[default]"$'\n'
+        sidebar_content+="#[fg=$COLOR_INACTIVE][refresh: C-r]#[default]"
+    fi
+
     echo "$sidebar_content"
 }
 
@@ -258,7 +320,8 @@ main() {
             get_claude_sessions
             ;;
         "sidebar")
-            generate_sidebar_content
+            shift
+            generate_sidebar_content "$@"
             ;;
         "status")
             local session="${2:-}"

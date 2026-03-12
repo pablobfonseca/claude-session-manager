@@ -50,6 +50,7 @@ ERROR_PATTERNS=("error" "failed" "exception" "traceback" "fatal")
 WAITING_PATTERNS=("waiting" "input" "prompt" "?" "continue" "press" "enter")
 COMPLETE_PATTERNS=("complete" "done" "finished" "success" "✓" "✅")
 ACTIVE_PATTERNS=("thinking" "processing" "working" "analyzing" "generating")
+STARTING_PATTERNS=("starting" "initializing" "loading" "connecting")
 
 # Advanced Settings
 ENABLE_NOTIFICATIONS="true"   # Desktop notifications (if supported)

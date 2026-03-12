@@ -127,16 +127,12 @@ update_sidebar_content() {
     fi
 
     local content
-    content=$("$DETECTOR_SCRIPT" sidebar 2>/dev/null) || return 1
-
-    # Strip tmux color codes — sidebar pane is a plain shell
-    local plain_content
-    plain_content=$(echo "$content" | sed 's/#\[fg=[^]]*\]//g; s/#\[default\]//g; s/#\[[^]]*\]//g')
+    content=$("$DETECTOR_SCRIPT" sidebar --ansi 2>/dev/null) || return 1
 
     local tmpfile="/tmp/claude_sidebar_content.$$"
-    printf '%s\n' "$plain_content" > "$tmpfile"
+    printf '%s\n' "$content" > "$tmpfile"
 
-    tmux send-keys -t "$SIDEBAR_PANE_ID" "clear && cat '$tmpfile' && rm -f '$tmpfile'" Enter
+    tmux send-keys -t "$SIDEBAR_PANE_ID" "clear && printf '%b\n' \"\$(cat '$tmpfile')\" && rm -f '$tmpfile'" Enter
 }
 
 # Start monitoring loop
@@ -219,30 +215,45 @@ jump_to_status() {
 
 # Show session picker for Claude Code sessions
 show_session_picker() {
-    local sessions_data=$("$DETECTOR_SCRIPT" detect)
-    local session_list=""
+    local sessions_data
+    sessions_data=$("$DETECTOR_SCRIPT" detect)
 
-    # Build session list for fzf or simple selection
+    if [[ -z "$sessions_data" || "$sessions_data" == "[]" ]]; then
+        echo "No Claude Code sessions found"
+        return 1
+    fi
+
+    # Build ANSI-colored lines for fzf: "icon session_name (status)"
+    local fzf_input=""
     while IFS='|' read -r session status activity; do
         if [[ -n "$session" ]]; then
-            local status_icon=""
+            local icon="" color=""
             case "$status" in
-                "active") status_icon="●" ;;
-                "waiting") status_icon="⏸" ;;
-                "complete") status_icon="✓" ;;
-                "error") status_icon="❌" ;;
-                "starting") status_icon="⚡" ;;
-                *) status_icon=" " ;;
+                "active")   icon="●"; color="\033[38;2;0;255;65m" ;;
+                "waiting")  icon="⏸"; color="\033[38;2;255;255;0m" ;;
+                "complete") icon="✓"; color="\033[38;2;0;255;255m" ;;
+                "error")    icon="❌"; color="\033[38;2;255;0;127m" ;;
+                "starting") icon="⚡"; color="\033[38;2;191;0;255m" ;;
+                *)          icon=" "; color="\033[38;2;139;147;166m" ;;
             esac
-            session_list+="$status_icon $session ($status)"$'\n'
+            fzf_input+="$(printf '%b%s %s (%s)\033[0m' "$color" "$icon" "$session" "$status")"$'\n'
         fi
     done <<< "$sessions_data"
 
-    if [[ -n "$session_list" ]]; then
-        echo "Claude Code Sessions:"
-        echo "$session_list"
-    else
-        echo "No Claude Code sessions found"
+    local selected
+    selected=$(printf '%s' "$fzf_input" | fzf \
+        --ansi \
+        --header="Claude Code Sessions (enter to switch)" \
+        --preview="tmux capture-pane -t {2} -p -S -30 2>/dev/null || echo 'Preview unavailable'" \
+        --preview-window="right:50%" \
+        --no-sort \
+        --reverse)
+
+    if [[ -n "$selected" ]]; then
+        # Extract session name: "icon session_name (status)" → session_name
+        local session_name
+        session_name=$(echo "$selected" | sed 's/^[^ ]* //' | sed 's/ ([^)]*)$//')
+        switch_to_session "$session_name"
     fi
 }
 
