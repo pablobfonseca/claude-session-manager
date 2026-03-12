@@ -25,19 +25,10 @@ else
     echo "Installing to user directory: $INSTALL_TARGET"
 fi
 
-# Copy the main script
-cp "$REPO_DIR/$SCRIPT_NAME" "$INSTALL_TARGET"
-chmod +x "$INSTALL_TARGET"
+# Symlink the main script directly (always runs from repo)
+ln -sf "$REPO_DIR/$SCRIPT_NAME" "$INSTALL_TARGET"
 
-# Create symlink to source directory for scripts
-LINK_TARGET="$INSTALL_TARGET.d"
-if [[ -L "$LINK_TARGET" ]]; then
-    rm "$LINK_TARGET"
-fi
-ln -sf "$REPO_DIR" "$LINK_TARGET"
-
-echo "✅ Installed to: $INSTALL_TARGET"
-echo "✅ Source linked: $LINK_TARGET"
+echo "✅ Installed: $INSTALL_TARGET -> $REPO_DIR/$SCRIPT_NAME"
 
 # Check if installation directory is in PATH
 if [[ $USER_INSTALL == true ]]; then

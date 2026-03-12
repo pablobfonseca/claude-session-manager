@@ -6,7 +6,6 @@
 
 # Configuration
 CLAUDE_PATTERNS=("claude" "anthropic" "ai-session" "claude-code" "cc-")
-STATUS_FILE="/tmp/claude_sessions_status"
 CONFIG_FILE="${HOME}/.config/claude-session-manager/config"
 
 # Status indicators
@@ -23,6 +22,13 @@ COLOR_COMPLETE="#00ffff"    # Electric cyan
 COLOR_ERROR="#ff007f"       # Neon pink
 COLOR_STARTING="#bf00ff"    # Electric purple
 COLOR_INACTIVE="#8b93a6"    # Muted gray
+
+# Default status detection patterns (overridable via config)
+ERROR_PATTERNS=("error" "failed" "exception" "traceback" "fatal")
+WAITING_PATTERNS=("waiting" "input" "prompt" "continue" "press" "enter")
+COMPLETE_PATTERNS=("complete" "done" "finished" "success" "✓" "✅")
+ACTIVE_PATTERNS=("thinking" "processing" "working" "analyzing" "generating")
+STARTING_PATTERNS=("starting" "initializing" "loading" "connecting")
 
 # Load configuration if exists
 load_config() {
@@ -78,42 +84,63 @@ has_claude_processes() {
 # Analyze session output to determine status
 analyze_session_status() {
     local session_name="$1"
-    
+
+    # Build regex from pattern arrays
+    local error_regex waiting_regex complete_regex active_regex starting_regex
+    error_regex=$(IFS='|'; echo "${ERROR_PATTERNS[*]}")
+    waiting_regex=$(IFS='|'; echo "${WAITING_PATTERNS[*]}")
+    complete_regex=$(IFS='|'; echo "${COMPLETE_PATTERNS[*]}")
+    active_regex=$(IFS='|'; echo "${ACTIVE_PATTERNS[*]}")
+    starting_regex=$(IFS='|'; echo "${STARTING_PATTERNS[*]}")
+
     # Get the most recent output from all panes
     local recent_output=""
-    local panes=$(tmux list-panes -t "$session_name" -a -F "#{pane_id}")
-    
+    local panes
+    panes=$(tmux list-panes -t "$session_name" -a -F "#{pane_id}" 2>/dev/null) || true
+
     for pane in $panes; do
-        # Capture last 10 lines from pane
-        local pane_output=$(tmux capture-pane -t "$pane" -p -S -10 2>/dev/null || true)
+        local pane_output
+        pane_output=$(tmux capture-pane -t "$pane" -p -S -10 2>/dev/null) || continue
         recent_output+="$pane_output"$'\n'
     done
-    
-    # Convert to lowercase for pattern matching
-    local output_lower=$(echo "$recent_output" | tr '[:upper:]' '[:lower:]')
-    
-    # Check for various status patterns
-    if [[ "$output_lower" =~ (error|failed|exception|traceback|fatal) ]]; then
+
+    # Fall back to timestamp-based detection if no output captured
+    if [[ -z "${recent_output// /$'\n'}" ]]; then
+        _detect_status_by_activity "$session_name"
+        return
+    fi
+
+    local output_lower
+    output_lower=$(echo "$recent_output" | tr '[:upper:]' '[:lower:]')
+
+    if [[ "$output_lower" =~ ($error_regex) ]]; then
         echo "error"
-    elif [[ "$output_lower" =~ (waiting|input|prompt|\?|continue|press|enter) ]]; then
+    elif [[ "$output_lower" =~ ($waiting_regex) ]]; then
         echo "waiting"
-    elif [[ "$output_lower" =~ (complete|done|finished|success|✓|✅) ]]; then
+    elif [[ "$output_lower" =~ ($complete_regex) ]]; then
         echo "complete"
-    elif [[ "$output_lower" =~ (starting|initializing|loading|connecting) ]]; then
+    elif [[ "$output_lower" =~ ($starting_regex) ]]; then
         echo "starting"
-    elif [[ "$output_lower" =~ (thinking|processing|working|analyzing|generating) ]]; then
+    elif [[ "$output_lower" =~ ($active_regex) ]]; then
         echo "active"
     else
-        # Check if there's recent activity (output in last 30 seconds)
-        local last_activity=$(tmux display-message -t "$session_name" -p "#{session_activity}")
-        local current_time=$(date +%s)
-        local activity_age=$((current_time - last_activity))
-        
-        if [[ $activity_age -lt 30 ]]; then
-            echo "active"
-        else
-            echo "waiting"
-        fi
+        _detect_status_by_activity "$session_name"
+    fi
+}
+
+# Timestamp-based fallback for status detection
+_detect_status_by_activity() {
+    local session_name="$1"
+    local last_activity
+    last_activity=$(tmux display-message -t "$session_name" -p "#{session_activity}" 2>/dev/null || echo "0")
+    local current_time
+    current_time=$(date +%s)
+    local activity_age=$((current_time - last_activity))
+
+    if [[ $activity_age -lt 30 ]]; then
+        echo "active"
+    else
+        echo "waiting"
     fi
 }
 

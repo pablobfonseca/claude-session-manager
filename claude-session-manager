@@ -256,21 +256,39 @@ main() {
 # Check dependencies
 check_dependencies() {
     local missing_deps=()
-    
-    # Check for tmux
+
     if ! command -v tmux >/dev/null 2>&1; then
         missing_deps+=("tmux")
+    else
+        # Check tmux version >= 3.0
+        local tmux_version
+        tmux_version=$(tmux -V | sed 's/[^0-9.]//g')
+        local tmux_major="${tmux_version%%.*}"
+        if [[ "$tmux_major" -lt 3 ]] 2>/dev/null; then
+            echo "⚠️  tmux 3.0+ required (found: $tmux_version)"
+            exit 1
+        fi
     fi
-    
-    # Check for bash (should always be present)
+
     if ! command -v bash >/dev/null 2>&1; then
         missing_deps+=("bash")
+    else
+        # Check bash version >= 4.0
+        local bash_major="${BASH_VERSINFO[0]:-0}"
+        if [[ "$bash_major" -lt 4 ]]; then
+            echo "⚠️  bash 4.0+ required (found: $BASH_VERSION)"
+            exit 1
+        fi
     fi
-    
+
     if [[ ${#missing_deps[@]} -gt 0 ]]; then
         echo "❌ Missing dependencies: ${missing_deps[*]}"
         echo "Please install the missing dependencies and try again."
         exit 1
+    fi
+
+    if ! command -v pgrep >/dev/null 2>&1; then
+        echo "⚠️  pgrep not found — process-based session detection will be limited"
     fi
 }
 

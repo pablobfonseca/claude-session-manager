@@ -11,7 +11,7 @@ A tmux-integrated dashboard that provides real-time visibility into active Claud
 - 🎯 **Real-time monitoring** of Claude Code AI sessions
 - 📊 **Visual status indicators** with cyberpunk aesthetics  
 - ⚡ **Quick navigation** to sessions needing attention
-- 🔗 **sessionx integration** for enhanced session management
+- 🔗 **sessionx compatible** — works alongside tmux-sessionx
 - ⌨️ **Custom key bindings** for efficient workflow
 - 🎨 **Customizable themes** and sidebar positioning
 - 🔍 **Smart detection** of Claude Code processes
@@ -143,14 +143,13 @@ For best detection, name your Claude Code sessions:
 - `cc-[description]`
 - `ai-session-[name]`
 
-## 🔧 Integration with sessionx
+## 🔧 Using with sessionx
 
-Works seamlessly with [omerxx/tmux-sessionx](https://github.com/omerxx/tmux-sessionx):
+Compatible with [omerxx/tmux-sessionx](https://github.com/omerxx/tmux-sessionx):
 
-1. Use `sessionx` (PREFIX + o) for session switching
-2. Claude sessions show with status indicators
-3. Quick navigation to sessions needing attention
-4. Enhanced workflow without disruption
+1. Use `sessionx` (PREFIX + o) for general session switching
+2. Use this manager's sidebar and `jump` commands for Claude-specific navigation
+3. Both tools coexist — sessionx handles switching, this handles monitoring
 
 ## 📊 Status Detection Logic
 
@@ -171,9 +170,7 @@ claude-session-manager/
 │   ├── claude_session_detector.sh  # Core detection logic
 │   └── tmux_integration.sh         # tmux sidebar integration
 ├── config/                         # Configuration examples
-├── docs/                          # Documentation
-├── tests/                         # Test scripts
-└── install.sh                    # Installation script
+└── install.sh                      # Installation script
 ```
 
 ### Running Tests
@@ -250,7 +247,7 @@ claude-session-manager jump waiting
 
 Contributions welcome! Areas for improvement:
 - Additional status detection patterns
-- Enhanced sessionx integration
+- Deeper sessionx integration
 - Alternative display modes (status bar, floating)
 - Configuration GUI
 - Session analytics
