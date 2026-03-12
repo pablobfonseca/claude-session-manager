@@ -44,10 +44,9 @@ show_help() {
     echo "  switch <session>  Switch to specific Claude Code session"
     echo ""
     echo "🚀 Quick Navigation:"
-    echo "  jump waiting      Jump to sessions waiting for input"
+    echo "  jump approval     Jump to sessions needing approval"
     echo "  jump active       Jump to active sessions"
-    echo "  jump error        Jump to sessions with errors"
-    echo "  jump complete     Jump to completed sessions"
+    echo "  jump idle         Jump to idle sessions"
     echo ""
     echo "⚙️  Setup Commands:"
     echo "  install           Install and configure Claude Session Manager"
@@ -65,7 +64,7 @@ show_help() {
     echo "Examples:"
     echo "  $0 show                    # Show session status popup"
     echo "  $0 picker                  # Open fzf session picker"
-    echo "  $0 jump waiting            # Jump to sessions needing input"
+    echo "  $0 jump approval           # Jump to sessions needing approval"
     echo "  $0 list                    # List all Claude Code sessions"
 }
 
@@ -86,22 +85,10 @@ install_manager() {
 POPUP_WIDTH="60%"
 POPUP_HEIGHT="60%"
 
-# Detection patterns (add your own)
-CLAUDE_PATTERNS=("claude" "anthropic" "ai-session" "claude-code" "cc-")
-
-# Color theme (cyberpunk style)
-COLOR_ACTIVE="#00ff41"      # Matrix green
-COLOR_WAITING="#ffff00"     # Cyber yellow
-COLOR_COMPLETE="#00ffff"    # Electric cyan
-COLOR_ERROR="#ff007f"       # Neon pink
-COLOR_STARTING="#bf00ff"    # Electric purple
-
-# Status detection patterns (customize for your Claude Code output)
-ERROR_PATTERNS=("error" "failed" "exception" "traceback" "fatal")
-WAITING_PATTERNS=("waiting" "input" "prompt" "continue" "press" "enter")
-COMPLETE_PATTERNS=("complete" "done" "finished" "success" "✓" "✅")
-ACTIVE_PATTERNS=("thinking" "processing" "working" "analyzing" "generating")
-STARTING_PATTERNS=("starting" "initializing" "loading" "connecting")
+# Color theme
+COLOR_ACTIVE="#00ff41"      # Matrix green - actively working
+COLOR_APPROVAL="#ffff00"    # Cyber yellow - needs approval
+COLOR_IDLE="#8b93a6"        # Muted gray - idle/waiting for input
 EOF
         echo "✅ Created configuration file: $CONFIG_FILE"
     fi
@@ -115,7 +102,7 @@ EOF
     echo "Quick start:"
     echo "  $0 show                    # Show session status popup"
     echo "  $0 picker                  # Open fzf session picker"
-    echo "  $0 jump waiting            # Jump to sessions needing input"
+    echo "  $0 jump approval           # Jump to sessions needing approval"
     echo ""
     echo "Add to tmux.conf for keybindings:"
     echo "  bind-key g run-shell 'claude-session-manager show'"
@@ -175,20 +162,17 @@ main() {
         # Quick navigation
         "jump")
             case "$2" in
-                "waiting")
-                    "$TMUX_SCRIPT" jump-waiting
+                "approval")
+                    "$TMUX_SCRIPT" jump-approval
                     ;;
                 "active")
                     "$TMUX_SCRIPT" jump-active
                     ;;
-                "error")
-                    "$TMUX_SCRIPT" jump-error
-                    ;;
-                "complete")
-                    "$TMUX_SCRIPT" jump-complete
+                "idle")
+                    "$TMUX_SCRIPT" jump-idle
                     ;;
                 *)
-                    echo "Usage: $0 jump {waiting|active|error|complete}"
+                    echo "Usage: $0 jump {approval|active|idle}"
                     exit 1
                     ;;
             esac

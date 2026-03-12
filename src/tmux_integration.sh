@@ -59,7 +59,7 @@ jump_to_status() {
     sessions_data=$("$DETECTOR_SCRIPT" detect)
     local matching_sessions=()
 
-    while IFS='|' read -r session status activity; do
+    while IFS='|' read -r session status pane_count; do
         if [[ -n "$session" && "$status" == "$target_status" ]]; then
             matching_sessions+=("$session")
         fi
@@ -85,26 +85,25 @@ detector="$1"
 selection_file="$2"
 
 sessions_data=$("$detector" detect)
-if [[ -z "$sessions_data" || "$sessions_data" == "[]" ]]; then
+if [[ -z "$sessions_data" ]]; then
     echo "No Claude Code sessions found"
     sleep 2
     exit 0
 fi
 
 fzf_input=""
-while IFS="|" read -r session status activity; do
-    if [[ -n "$session" ]]; then
-        icon="" color=""
-        case "$status" in
-            "active")   icon="●"; color="\033[38;2;0;255;65m" ;;
-            "waiting")  icon="⏸"; color="\033[38;2;255;255;0m" ;;
-            "complete") icon="✓"; color="\033[38;2;0;255;255m" ;;
-            "error")    icon="❌"; color="\033[38;2;255;0;127m" ;;
-            "starting") icon="⚡"; color="\033[38;2;191;0;255m" ;;
-            *)          icon=" "; color="\033[38;2;139;147;166m" ;;
-        esac
-        fzf_input+="$(printf '%b%s %s (%s)\033[0m' "$color" "$icon" "$session" "$status")"$'\n'
-    fi
+while IFS="|" read -r session status pane_count; do
+    [[ -z "$session" ]] && continue
+    icon="" color="" label=""
+    case "$status" in
+        "active")   icon="●"; color="\033[38;2;0;255;65m";   label="working" ;;
+        "approval") icon="⏸"; color="\033[38;2;255;255;0m";  label="needs approval" ;;
+        "idle")     icon="◯"; color="\033[38;2;139;147;166m"; label="idle" ;;
+        *)          icon="◯"; color="\033[38;2;139;147;166m"; label="$status" ;;
+    esac
+    suffix=""
+    [[ "$pane_count" -gt 1 ]] && suffix=" (${pane_count})"
+    fzf_input+="$(printf '%b%s %s%s — %s\033[0m' "$color" "$icon" "$session" "$suffix" "$label")"$'\n'
 done <<< "$sessions_data"
 
 selected=$(printf '%s' "$fzf_input" | fzf \
@@ -116,8 +115,8 @@ selected=$(printf '%s' "$fzf_input" | fzf \
     --reverse)
 
 if [[ -n "$selected" ]]; then
-    # Extract session name: "icon session_name (status)" → session_name
-    session_name=$(echo "$selected" | sed 's/^[^ ]* //' | sed 's/ ([^)]*)$//')
+    # Extract session name: "icon session_name[suffix] — label" → session_name
+    session_name=$(echo "$selected" | sed 's/^[^ ]* //' | sed 's/ ([0-9]*)//;s/ — .*//')
     echo "$session_name" > "$selection_file"
 fi
 PICKER_EOF
@@ -154,17 +153,14 @@ main() {
         "picker"|"list-sessions")
             show_session_picker
             ;;
-        "jump-waiting")
-            jump_to_status "waiting"
-            ;;
-        "jump-error")
-            jump_to_status "error"
+        "jump-approval")
+            jump_to_status "approval"
             ;;
         "jump-active")
             jump_to_status "active"
             ;;
-        "jump-complete")
-            jump_to_status "complete"
+        "jump-idle")
+            jump_to_status "idle"
             ;;
         "switch")
             switch_to_session "$2"
@@ -179,10 +175,9 @@ main() {
             echo "  picker            Open fzf session picker"
             echo ""
             echo "Navigation Commands:"
-            echo "  jump-waiting      Jump to sessions waiting for input"
-            echo "  jump-error        Jump to sessions with errors"
+            echo "  jump-approval     Jump to sessions needing approval"
             echo "  jump-active       Jump to active sessions"
-            echo "  jump-complete     Jump to completed sessions"
+            echo "  jump-idle         Jump to idle sessions"
             echo "  switch <session>  Switch to specific session"
             echo ""
             echo "Example tmux.conf bindings:"

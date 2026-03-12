@@ -5,45 +5,7 @@
 POPUP_WIDTH="60%"
 POPUP_HEIGHT="60%"
 
-# Session Detection Patterns
-# Add patterns that match your Claude Code session naming
-CLAUDE_PATTERNS=(
-    "claude"
-    "anthropic"
-    "ai-session"
-    "claude-code"
-    "cc-"
-    "ai-"
-)
-
-# Cyberpunk Color Theme
+# Color Theme
 COLOR_ACTIVE="#00ff41"        # Matrix green - actively working
-COLOR_WAITING="#ffff00"       # Cyber yellow - needs input
-COLOR_COMPLETE="#00ffff"      # Electric cyan - task complete
-COLOR_ERROR="#ff007f"         # Neon pink - has errors
-COLOR_STARTING="#bf00ff"      # Electric purple - initializing
-COLOR_INACTIVE="#8b93a6"      # Muted gray - inactive
-
-# Alternative Color Themes
-
-# Classic Terminal Theme
-# COLOR_ACTIVE="#00ff00"      # Green
-# COLOR_WAITING="#ffff00"     # Yellow
-# COLOR_COMPLETE="#00ffff"    # Cyan
-# COLOR_ERROR="#ff0000"       # Red
-# COLOR_STARTING="#ff00ff"    # Magenta
-
-# Minimalist Theme
-# COLOR_ACTIVE="#ffffff"      # White
-# COLOR_WAITING="#888888"     # Gray
-# COLOR_COMPLETE="#aaaaaa"    # Light gray
-# COLOR_ERROR="#ff0000"       # Red
-# COLOR_STARTING="#666666"    # Dark gray
-
-# Status Detection Patterns
-# Adjust these patterns based on your Claude Code output
-ERROR_PATTERNS=("error" "failed" "exception" "traceback" "fatal")
-WAITING_PATTERNS=("waiting" "input" "prompt" "continue" "press" "enter")
-COMPLETE_PATTERNS=("complete" "done" "finished" "success" "✓" "✅")
-ACTIVE_PATTERNS=("thinking" "processing" "working" "analyzing" "generating")
-STARTING_PATTERNS=("starting" "initializing" "loading" "connecting")
+COLOR_APPROVAL="#ffff00"      # Cyber yellow - needs approval
+COLOR_IDLE="#8b93a6"          # Muted gray - idle/waiting for input
