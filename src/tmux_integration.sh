@@ -82,22 +82,16 @@ jump_to_status() {
 show_session_picker() {
     local detector="$DETECTOR_SCRIPT"
     local selection_file="/tmp/claude_picker_selection.$$"
-
-    # Build the fzf picker script
     local picker_script="/tmp/claude_picker_script.$$"
-    cat > "$picker_script" << 'PICKER_EOF'
+    local generate_script="/tmp/claude_picker_generate.$$"
+    local action_script="/tmp/claude_picker_action.$$"
+
+    # Build the generate script (used for initial input and reload)
+    cat > "$generate_script" << 'GENERATE_EOF'
 #!/usr/bin/env bash
 detector="$1"
-selection_file="$2"
-
 panes_data=$("$detector" detect)
-if [[ -z "$panes_data" ]]; then
-    echo "No Claude Code sessions found"
-    sleep 2
-    exit 0
-fi
-
-fzf_input=""
+[[ -z "$panes_data" ]] && exit 0
 while IFS="|" read -r session pane_id project status; do
     [[ -z "$session" ]] && continue
     icon="" color="" label=""
@@ -109,24 +103,106 @@ while IFS="|" read -r session pane_id project status; do
     esac
     dim="\033[38;2;139;147;166m"
     reset="\033[0m"
-    # Format: "pane_id\ticon project [session] — label" with ANSI colors
-    fzf_input+="$(printf '%s\t%b%s %s %b[%s]%b — %s%b' \
-        "$pane_id" "$color" "$icon" "$project" "$dim" "$session" "$color" "$label" "$reset")"$'\n'
+    printf '%s\t%b%s %s %b[%s]%b — %s%b\n' \
+        "$pane_id:$status" "$color" "$icon" "$project" "$dim" "$session" "$color" "$label" "$reset"
 done <<< "$panes_data"
+GENERATE_EOF
+    chmod +x "$generate_script"
+
+    # Build the action script (handles approve, reject, write)
+    cat > "$action_script" << 'ACTION_EOF'
+#!/usr/bin/env bash
+action="$1"
+field="$2"
+pane_id="${field%%:*}"
+status="${field##*:}"
+
+case "$action" in
+    approve)
+        if [[ "$status" == "approval" ]]; then
+            tmux send-keys -t "$pane_id" Enter
+        fi
+        ;;
+    reject)
+        if [[ "$status" == "approval" ]]; then
+            tmux send-keys -t "$pane_id" Escape
+        fi
+        ;;
+    write)
+        if [[ "$status" == "idle" ]]; then
+            printf '\033[38;2;139;147;166mesc=cancel enter=send\033[0m\n'
+            printf '\033[38;2;0;255;65m❯ \033[0m'
+            input=""
+            while IFS= read -rsn1 char; do
+                # Escape key (0x1b)
+                if [[ "$char" == $'\x1b' ]]; then
+                    # Drain any remaining escape sequence bytes
+                    read -rsn2 -t 0.01 _ 2>/dev/null || true
+                    printf '\n\033[38;2;139;147;166mcancelled\033[0m\n'
+                    sleep 0.5
+                    exit 0
+                fi
+                # Enter key (empty char from read)
+                if [[ -z "$char" ]]; then
+                    printf '\n'
+                    break
+                fi
+                # Backspace (0x7f or 0x08)
+                if [[ "$char" == $'\x7f' || "$char" == $'\x08' ]]; then
+                    if [[ -n "$input" ]]; then
+                        input="${input%?}"
+                        printf '\b \b'
+                    fi
+                    continue
+                fi
+                input+="$char"
+                printf '%s' "$char"
+            done
+            if [[ -n "$input" ]]; then
+                tmux send-keys -t "$pane_id" -l "$input"
+                tmux send-keys -t "$pane_id" Enter
+            fi
+        else
+            printf '\033[38;2;255;255;0m⚠ Pane is not idle (status: %s)\033[0m\n' "$status"
+            sleep 1
+        fi
+        ;;
+esac
+ACTION_EOF
+    chmod +x "$action_script"
+
+    # Build the fzf picker script
+    cat > "$picker_script" << 'PICKER_EOF'
+#!/usr/bin/env bash
+detector="$1"
+selection_file="$2"
+generate_script="$3"
+action_script="$4"
+
+fzf_input=$(bash "$generate_script" "$detector")
+if [[ -z "$fzf_input" ]]; then
+    echo "No Claude Code sessions found"
+    sleep 2
+    exit 0
+fi
 
 selected=$(printf '%s' "$fzf_input" | fzf \
     --ansi \
     --with-nth=2.. \
     --delimiter=$'\t' \
-    --header="enter=switch, esc=close" \
-    --preview="tmux capture-pane -e -t {1} -p -S -30 2>/dev/null || echo 'Preview unavailable'" \
+    --header="enter=switch │ C-y=approve │ C-x=reject │ C-w=write │ C-d/C-u=scroll │ esc=close" \
+    --preview="tmux capture-pane -e -t \$(echo {1} | cut -d: -f1) -p -S -30 2>/dev/null || echo 'Preview unavailable'" \
     --preview-window="right:50%" \
     --no-sort \
-    --reverse)
+    --reverse \
+    --bind="ctrl-y:execute-silent(bash $action_script approve {1})+reload(bash $generate_script $detector)" \
+    --bind="ctrl-x:execute-silent(bash $action_script reject {1})+reload(bash $generate_script $detector)" \
+    --bind="ctrl-w:execute(bash $action_script write {1})+reload(bash $generate_script $detector)" \
+    --bind="ctrl-d:preview-half-page-down" \
+    --bind="ctrl-u:preview-half-page-up")
 
 if [[ -n "$selected" ]]; then
-    # Extract pane_id (first tab-separated field)
-    pane_id=$(echo "$selected" | cut -f1)
+    pane_id=$(echo "$selected" | cut -f1 | cut -d: -f1)
     echo "$pane_id" > "$selection_file"
 fi
 PICKER_EOF
@@ -136,10 +212,10 @@ PICKER_EOF
     tmux display-popup \
         -w "$POPUP_WIDTH" -h "$POPUP_HEIGHT" \
         -T " 🤖 Claude Code Picker " \
-        -E "bash '$picker_script' '$detector' '$selection_file'"
+        -E "bash '$picker_script' '$detector' '$selection_file' '$generate_script' '$action_script'"
 
-    # Clean up script
-    rm -f "$picker_script"
+    # Clean up all temp scripts
+    rm -f "$picker_script" "$generate_script" "$action_script"
 
     # After popup closes, switch to selected pane
     if [[ -f "$selection_file" ]]; then
