@@ -21,17 +21,18 @@ load_config() {
 
 # Show session status in a tmux popup
 show_popup() {
-    local content
-    content=$("$DETECTOR_SCRIPT" sidebar --ansi 2>/dev/null)
+    local tmpfile="/tmp/claude_popup_content.$$"
 
-    if [[ -z "$content" ]]; then
-        content="No Claude Code sessions detected"
+    "$DETECTOR_SCRIPT" sidebar --ansi > "$tmpfile" 2>/dev/null
+
+    if [[ ! -s "$tmpfile" ]]; then
+        echo "No Claude Code sessions detected" > "$tmpfile"
     fi
 
     tmux display-popup \
         -w "$POPUP_WIDTH" -h "$POPUP_HEIGHT" \
         -T " 🤖 Claude Code Sessions " \
-        -E "printf '%b\n' $(printf '%q' "$content"); echo; echo 'Press any key to close'; read -rsn1"
+        -E "bash -c 'printf \"%b\\n\" \"\$(cat \"$tmpfile\")\"; rm -f \"$tmpfile\"; echo; echo \"Press any key to close\"; read -rsn1'"
 }
 
 # Switch to a Claude Code session
@@ -74,47 +75,72 @@ jump_to_status() {
 # fzf-powered session picker inside a tmux popup
 show_session_picker() {
     local detector="$DETECTOR_SCRIPT"
+    local selection_file="/tmp/claude_picker_selection.$$"
 
+    # Build the fzf picker script
+    local picker_script="/tmp/claude_picker_script.$$"
+    cat > "$picker_script" << 'PICKER_EOF'
+#!/usr/bin/env bash
+detector="$1"
+selection_file="$2"
+
+sessions_data=$("$detector" detect)
+if [[ -z "$sessions_data" || "$sessions_data" == "[]" ]]; then
+    echo "No Claude Code sessions found"
+    sleep 2
+    exit 0
+fi
+
+fzf_input=""
+while IFS="|" read -r session status activity; do
+    if [[ -n "$session" ]]; then
+        icon="" color=""
+        case "$status" in
+            "active")   icon="●"; color="\033[38;2;0;255;65m" ;;
+            "waiting")  icon="⏸"; color="\033[38;2;255;255;0m" ;;
+            "complete") icon="✓"; color="\033[38;2;0;255;255m" ;;
+            "error")    icon="❌"; color="\033[38;2;255;0;127m" ;;
+            "starting") icon="⚡"; color="\033[38;2;191;0;255m" ;;
+            *)          icon=" "; color="\033[38;2;139;147;166m" ;;
+        esac
+        fzf_input+="$(printf '%b%s %s (%s)\033[0m' "$color" "$icon" "$session" "$status")"$'\n'
+    fi
+done <<< "$sessions_data"
+
+selected=$(printf '%s' "$fzf_input" | fzf \
+    --ansi \
+    --header="enter=switch, esc=close" \
+    --preview="tmux capture-pane -e -t {2} -p -S -30 2>/dev/null || echo 'Preview unavailable'" \
+    --preview-window="right:50%" \
+    --no-sort \
+    --reverse)
+
+if [[ -n "$selected" ]]; then
+    # Extract session name: "icon session_name (status)" → session_name
+    session_name=$(echo "$selected" | sed 's/^[^ ]* //' | sed 's/ ([^)]*)$//')
+    echo "$session_name" > "$selection_file"
+fi
+PICKER_EOF
+    chmod +x "$picker_script"
+
+    # Run picker in popup — popup closes when fzf exits
     tmux display-popup \
         -w "$POPUP_WIDTH" -h "$POPUP_HEIGHT" \
         -T " 🤖 Claude Code Picker " \
-        -E "bash -c '
-            sessions_data=\$(\"\$1\" detect)
-            if [[ -z \"\$sessions_data\" || \"\$sessions_data\" == \"[]\" ]]; then
-                echo \"No Claude Code sessions found\"
-                sleep 2
-                exit 0
-            fi
+        -E "bash '$picker_script' '$detector' '$selection_file'"
 
-            fzf_input=\"\"
-            while IFS=\"|\" read -r session status activity; do
-                if [[ -n \"\$session\" ]]; then
-                    icon=\"\" color=\"\"
-                    case \"\$status\" in
-                        \"active\")   icon=\"●\"; color=\"\\033[38;2;0;255;65m\" ;;
-                        \"waiting\")  icon=\"⏸\"; color=\"\\033[38;2;255;255;0m\" ;;
-                        \"complete\") icon=\"✓\"; color=\"\\033[38;2;0;255;255m\" ;;
-                        \"error\")    icon=\"❌\"; color=\"\\033[38;2;255;0;127m\" ;;
-                        \"starting\") icon=\"⚡\"; color=\"\\033[38;2;191;0;255m\" ;;
-                        *)          icon=\" \"; color=\"\\033[38;2;139;147;166m\" ;;
-                    esac
-                    fzf_input+=\"\$(printf \"%b%s %s (%s)\\033[0m\" \"\$color\" \"\$icon\" \"\$session\" \"\$status\")\"$\"\n\"
-                fi
-            done <<< \"\$sessions_data\"
+    # Clean up script
+    rm -f "$picker_script"
 
-            selected=\$(printf \"%s\" \"\$fzf_input\" | fzf \
-                --ansi \
-                --header=\"enter=switch, esc=close\" \
-                --preview=\"tmux capture-pane -t {2} -p -S -30 2>/dev/null || echo Preview unavailable\" \
-                --preview-window=\"right:50%\" \
-                --no-sort \
-                --reverse)
-
-            if [[ -n \"\$selected\" ]]; then
-                session_name=\$(echo \"\$selected\" | sed \"s/^[^ ]* //\" | sed \"s/ ([^)]*)$//\")
-                tmux switch-client -t \"\$session_name\"
-            fi
-        ' _ \"$detector\""
+    # After popup closes, switch to selected session
+    if [[ -f "$selection_file" ]]; then
+        local session_name
+        session_name=$(cat "$selection_file")
+        rm -f "$selection_file"
+        if [[ -n "$session_name" ]]; then
+            tmux switch-client -t "$session_name"
+        fi
+    fi
 }
 
 # Main function
