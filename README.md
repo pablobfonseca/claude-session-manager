@@ -130,6 +130,29 @@ claude-session-manager/
 └── install.sh                      # Installer (symlinks to ~/.local/bin)
 ```
 
+## Contributing
+
+1. Fork the repo and create a feature branch
+2. Make changes — keep scripts POSIX-friendly where possible, bash 4.0+ minimum
+3. Test with multiple Claude sessions across different tmux windows/sessions
+4. Submit a PR with a clear description of what changed and why
+
+### Guidelines
+
+- No external dependencies beyond `tmux`, `bash`, `fzf`, and standard unix tools (`pgrep`, `jq`, `ps`)
+- Keep scripts self-contained — avoid pulling in package managers or build steps
+- Match existing code style: function names use `snake_case`, variables use `UPPER_CASE` for config and `lower_case` for locals
+- Test both hook-based and terminal-scraping detection paths
+- If adding new fzf keybindings, avoid conflicts with common tmux prefixes (`ctrl-a`, `ctrl-b`)
+
+### Reporting Issues
+
+Open an issue with:
+- tmux version (`tmux -V`)
+- bash version (`bash --version`)
+- macOS or Linux
+- Steps to reproduce
+
 ## License
 
 MIT
