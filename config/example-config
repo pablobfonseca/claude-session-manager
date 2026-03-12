@@ -1,23 +1,19 @@
 # Claude Code Session Manager - Example Configuration
 # Copy to ~/.config/claude-session-manager/config and customize
 
-# Sidebar Configuration
-SIDEBAR_WIDTH="25%"           # Width of the sidebar (percentage or exact size)
-SIDEBAR_POSITION="right"      # Position: left, right, top, bottom
-UPDATE_INTERVAL="3"           # Update frequency in seconds
-AUTO_HIDE_TIMEOUT="30"        # Auto-hide after inactivity (seconds)
+# Popup dimensions
+POPUP_WIDTH="60%"
+POPUP_HEIGHT="60%"
 
 # Session Detection Patterns
 # Add patterns that match your Claude Code session naming
 CLAUDE_PATTERNS=(
     "claude"
-    "anthropic" 
+    "anthropic"
     "ai-session"
     "claude-code"
     "cc-"
     "ai-"
-    "gpt"
-    "assistant"
 )
 
 # Cyberpunk Color Theme
@@ -32,33 +28,22 @@ COLOR_INACTIVE="#8b93a6"      # Muted gray - inactive
 
 # Classic Terminal Theme
 # COLOR_ACTIVE="#00ff00"      # Green
-# COLOR_WAITING="#ffff00"     # Yellow  
+# COLOR_WAITING="#ffff00"     # Yellow
 # COLOR_COMPLETE="#00ffff"    # Cyan
 # COLOR_ERROR="#ff0000"       # Red
 # COLOR_STARTING="#ff00ff"    # Magenta
 
-# Minimalist Theme  
+# Minimalist Theme
 # COLOR_ACTIVE="#ffffff"      # White
 # COLOR_WAITING="#888888"     # Gray
 # COLOR_COMPLETE="#aaaaaa"    # Light gray
 # COLOR_ERROR="#ff0000"       # Red
 # COLOR_STARTING="#666666"    # Dark gray
 
-# Status Detection Sensitivity
+# Status Detection Patterns
 # Adjust these patterns based on your Claude Code output
 ERROR_PATTERNS=("error" "failed" "exception" "traceback" "fatal")
-WAITING_PATTERNS=("waiting" "input" "prompt" "?" "continue" "press" "enter")
+WAITING_PATTERNS=("waiting" "input" "prompt" "continue" "press" "enter")
 COMPLETE_PATTERNS=("complete" "done" "finished" "success" "✓" "✅")
 ACTIVE_PATTERNS=("thinking" "processing" "working" "analyzing" "generating")
 STARTING_PATTERNS=("starting" "initializing" "loading" "connecting")
-
-# Advanced Settings
-ENABLE_NOTIFICATIONS="true"   # Desktop notifications (if supported)
-ENABLE_SOUND="false"         # Sound alerts (if supported) 
-LOG_LEVEL="info"             # Logging: debug, info, warn, error
-MAX_SESSION_NAME="20"        # Maximum characters in session name display
-
-# Integration Settings
-SESSIONX_INTEGRATION="true"   # Enhanced sessionx compatibility
-AUTO_FOCUS_WAITING="false"   # Automatically switch to waiting sessions
-PERSISTENT_SIDEBAR="true"    # Keep sidebar across session switches
