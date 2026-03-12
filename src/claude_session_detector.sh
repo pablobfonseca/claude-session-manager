@@ -64,7 +64,7 @@ find_claude_panes() {
 
     for session in $sessions; do
         local pane_info
-        pane_info=$(tmux list-panes -t "$session" -F "#{pane_id} #{pane_pid}" 2>/dev/null) || continue
+        pane_info=$(tmux list-panes -t "$session" -s -F "#{pane_id} #{pane_pid}" 2>/dev/null) || continue
 
         while read -r pane_id pane_pid; do
             [[ -z "$pane_id" ]] && continue
@@ -301,7 +301,7 @@ main() {
             if [[ -n "$session" ]]; then
                 # Find claude panes in this specific session
                 local panes
-                panes=$(tmux list-panes -t "$session" -F "#{pane_id} #{pane_pid}" 2>/dev/null) || {
+                panes=$(tmux list-panes -t "$session" -s -F "#{pane_id} #{pane_pid}" 2>/dev/null) || {
                     echo "unknown"
                     return
                 }
