@@ -4,7 +4,11 @@
 # Main entry point for managing Claude Code AI sessions in tmux
 # Author: Shikamaru <shikamarunaraclaw@gmail.com>
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_SOURCE="${BASH_SOURCE[0]}"
+while [[ -L "$SCRIPT_SOURCE" ]]; do
+    SCRIPT_SOURCE="$(readlink "$SCRIPT_SOURCE")"
+done
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_SOURCE")" && pwd)"
 VERSION="1.1.0"
 
 # Source the integration scripts
