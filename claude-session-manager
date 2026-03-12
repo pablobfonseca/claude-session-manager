@@ -1,0 +1,290 @@
+#!/bin/bash
+
+# Claude Code Session Manager
+# Main entry point for managing Claude Code AI sessions in tmux
+# Author: Shikamaru <shikamarunaraclaw@gmail.com>
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VERSION="1.0.0"
+
+# Source the integration scripts
+TMUX_SCRIPT="$SCRIPT_DIR/src/tmux_integration.sh"
+DETECTOR_SCRIPT="$SCRIPT_DIR/src/claude_session_detector.sh"
+
+# Configuration
+CONFIG_DIR="${HOME}/.config/claude-session-manager"
+CONFIG_FILE="$CONFIG_DIR/config"
+
+# Ensure scripts are executable
+chmod +x "$TMUX_SCRIPT" "$DETECTOR_SCRIPT" 2>/dev/null || true
+
+# Show version information
+show_version() {
+    echo "Claude Code Session Manager v$VERSION"
+    echo "Author: Shikamaru <shikamarunaraclaw@gmail.com>"
+    echo "Repository: https://github.com/shikamarunaraclaw/claude-session-manager"
+}
+
+# Show help information
+show_help() {
+    echo "Claude Code Session Manager - Monitor and manage Claude Code AI sessions"
+    echo ""
+    echo "Usage: $0 <command> [options]"
+    echo ""
+    echo "🖥️  Sidebar Commands:"
+    echo "  sidebar show      Create and display the Claude Code sidebar"
+    echo "  sidebar hide      Remove the sidebar"
+    echo "  sidebar toggle    Toggle sidebar visibility"
+    echo "  sidebar refresh   Refresh sidebar content"
+    echo ""
+    echo "🔍 Session Commands:"
+    echo "  list              List all Claude Code sessions with status"
+    echo "  status <session>  Get status of specific session"
+    echo "  switch <session>  Switch to specific Claude Code session"
+    echo ""
+    echo "🚀 Quick Navigation:"
+    echo "  jump waiting      Jump to sessions waiting for input"
+    echo "  jump active       Jump to active sessions"  
+    echo "  jump error        Jump to sessions with errors"
+    echo "  jump complete     Jump to completed sessions"
+    echo ""
+    echo "⚙️  Setup Commands:"
+    echo "  install           Install and configure Claude Session Manager"
+    echo "  uninstall         Remove installation and key bindings"
+    echo "  configure         Open configuration file"
+    echo "  keys install      Install tmux key bindings"
+    echo "  keys uninstall    Remove tmux key bindings"
+    echo ""
+    echo "ℹ️  Info Commands:"
+    echo "  version           Show version information"
+    echo "  help              Show this help message"
+    echo ""
+    echo "🎮 Key Bindings (after installation):"
+    echo "  PREFIX + C-c      Toggle sidebar"
+    echo "  PREFIX + C-w      Jump to waiting sessions"
+    echo "  PREFIX + C-e      Jump to error sessions"
+    echo "  PREFIX + C-a      Jump to active sessions"
+    echo "  PREFIX + C-r      Refresh sidebar"
+    echo ""
+    echo "Examples:"
+    echo "  $0 sidebar show           # Show the sidebar"
+    echo "  $0 jump waiting           # Jump to sessions needing input"
+    echo "  $0 list                   # List all Claude Code sessions"
+    echo "  $0 install                # Full installation"
+}
+
+# Install Claude Session Manager
+install_manager() {
+    echo "🤖 Installing Claude Code Session Manager..."
+    
+    # Create config directory
+    mkdir -p "$CONFIG_DIR"
+    
+    # Create default configuration
+    if [[ ! -f "$CONFIG_FILE" ]]; then
+        cat > "$CONFIG_FILE" << 'EOF'
+# Claude Code Session Manager Configuration
+# Customize these settings for your workflow
+
+# Sidebar configuration
+SIDEBAR_WIDTH="25%"
+SIDEBAR_POSITION="right"  # left, right, top, bottom
+
+# Monitoring settings
+UPDATE_INTERVAL="3"
+AUTO_HIDE_TIMEOUT="30"
+
+# Detection patterns (add your own)
+CLAUDE_PATTERNS=("claude" "anthropic" "ai-session" "claude-code" "cc-")
+
+# Color theme (cyberpunk style)
+COLOR_ACTIVE="#00ff41"      # Matrix green
+COLOR_WAITING="#ffff00"     # Cyber yellow  
+COLOR_COMPLETE="#00ffff"    # Electric cyan
+COLOR_ERROR="#ff007f"       # Neon pink
+COLOR_STARTING="#bf00ff"    # Electric purple
+EOF
+        echo "✅ Created configuration file: $CONFIG_FILE"
+    fi
+    
+    # Install key bindings
+    "$TMUX_SCRIPT" install-keys
+    
+    # Make scripts executable
+    chmod +x "$SCRIPT_DIR"/*.sh "$SCRIPT_DIR"/src/*.sh 2>/dev/null || true
+    
+    echo ""
+    echo "🎉 Installation complete!"
+    echo ""
+    echo "Quick start:"
+    echo "  $0 sidebar show           # Show the Claude Code sidebar"
+    echo "  $0 jump waiting           # Jump to sessions needing input"
+    echo ""
+    echo "Configuration file: $CONFIG_FILE"
+    echo "Edit it to customize colors, sidebar position, and detection patterns."
+}
+
+# Uninstall Claude Session Manager
+uninstall_manager() {
+    echo "🗑️  Uninstalling Claude Code Session Manager..."
+    
+    # Remove sidebar if active
+    "$TMUX_SCRIPT" remove
+    
+    # Uninstall key bindings
+    "$TMUX_SCRIPT" uninstall-keys
+    
+    # Ask about removing config
+    echo ""
+    echo "Remove configuration directory? ($CONFIG_DIR)"
+    read -p "y/N: " remove_config
+    
+    if [[ "$remove_config" =~ ^[Yy]$ ]]; then
+        rm -rf "$CONFIG_DIR"
+        echo "✅ Configuration removed"
+    fi
+    
+    echo "✅ Uninstallation complete"
+}
+
+# Open configuration file
+configure_manager() {
+    if [[ ! -f "$CONFIG_FILE" ]]; then
+        echo "Configuration file not found. Run 'install' first."
+        exit 1
+    fi
+    
+    # Use $EDITOR or fallback to nano
+    "${EDITOR:-nano}" "$CONFIG_FILE"
+}
+
+# Main command router
+main() {
+    case "${1:-help}" in
+        # Sidebar commands
+        "sidebar")
+            case "$2" in
+                "show"|"create")
+                    "$TMUX_SCRIPT" create
+                    ;;
+                "hide"|"remove")
+                    "$TMUX_SCRIPT" remove
+                    ;;
+                "toggle")
+                    "$TMUX_SCRIPT" toggle
+                    ;;
+                "refresh"|"update")
+                    "$TMUX_SCRIPT" refresh
+                    ;;
+                *)
+                    echo "Usage: $0 sidebar {show|hide|toggle|refresh}"
+                    exit 1
+                    ;;
+            esac
+            ;;
+        
+        # Session commands
+        "list")
+            "$DETECTOR_SCRIPT" list
+            ;;
+        "status")
+            "$DETECTOR_SCRIPT" status "$2"
+            ;;
+        "switch")
+            "$TMUX_SCRIPT" switch "$2"
+            ;;
+        
+        # Quick navigation
+        "jump")
+            case "$2" in
+                "waiting")
+                    "$TMUX_SCRIPT" jump-waiting
+                    ;;
+                "active")
+                    "$TMUX_SCRIPT" jump-active
+                    ;;
+                "error")
+                    "$TMUX_SCRIPT" jump-error
+                    ;;
+                "complete")
+                    "$TMUX_SCRIPT" jump-complete
+                    ;;
+                *)
+                    echo "Usage: $0 jump {waiting|active|error|complete}"
+                    exit 1
+                    ;;
+            esac
+            ;;
+        
+        # Key binding management
+        "keys")
+            case "$2" in
+                "install")
+                    "$TMUX_SCRIPT" install-keys
+                    ;;
+                "uninstall")
+                    "$TMUX_SCRIPT" uninstall-keys
+                    ;;
+                *)
+                    echo "Usage: $0 keys {install|uninstall}"
+                    exit 1
+                    ;;
+            esac
+            ;;
+        
+        # Setup commands
+        "install")
+            install_manager
+            ;;
+        "uninstall")
+            uninstall_manager
+            ;;
+        "configure")
+            configure_manager
+            ;;
+        
+        # Info commands
+        "version"|"--version"|"-v")
+            show_version
+            ;;
+        "help"|"--help"|"-h"|*)
+            show_help
+            ;;
+    esac
+}
+
+# Check dependencies
+check_dependencies() {
+    local missing_deps=()
+    
+    # Check for tmux
+    if ! command -v tmux >/dev/null 2>&1; then
+        missing_deps+=("tmux")
+    fi
+    
+    # Check for bash (should always be present)
+    if ! command -v bash >/dev/null 2>&1; then
+        missing_deps+=("bash")
+    fi
+    
+    if [[ ${#missing_deps[@]} -gt 0 ]]; then
+        echo "❌ Missing dependencies: ${missing_deps[*]}"
+        echo "Please install the missing dependencies and try again."
+        exit 1
+    fi
+}
+
+# Check tmux is running
+check_tmux_running() {
+    if [[ -z "$TMUX" ]] && [[ "${1}" != "help" ]] && [[ "${1}" != "version" ]] && [[ "${1}" != "install" ]]; then
+        echo "❌ tmux not detected. Please run this command inside a tmux session."
+        exit 1
+    fi
+}
+
+# Run pre-checks
+check_dependencies
+check_tmux_running "$1"
+
+# Execute main function
+main "$@"
