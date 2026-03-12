@@ -2,7 +2,6 @@
 
 # tmux Integration for Claude Session Manager
 # Handles popup display, session switching, and fzf picker
-# Author: Shikamaru <shikamarunaraclaw@gmail.com>
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DETECTOR_SCRIPT="$SCRIPT_DIR/claude_session_detector.sh"
@@ -35,41 +34,48 @@ show_popup() {
         -E "bash -c 'printf \"%b\\n\" \"\$(cat \"$tmpfile\")\"; rm -f \"$tmpfile\"; echo; echo \"Press any key to close\"; read -rsn1'"
 }
 
-# Switch to a Claude Code session
-switch_to_session() {
-    local session_name="$1"
+# Switch to a specific tmux pane
+switch_to_pane() {
+    local target="$1"
 
-    if [[ -z "$session_name" ]]; then
-        echo "Usage: switch_to_session <session_name>"
-        return 1
-    fi
-
-    if tmux list-sessions -F "#{session_name}" 2>/dev/null | grep -qxF "$session_name"; then
-        tmux switch-client -t "$session_name"
+    # If target looks like a pane_id (%NNN), switch to that pane
+    if [[ "$target" == %* ]]; then
+        local session
+        session=$(tmux display-message -t "$target" -p "#{session_name}" 2>/dev/null) || {
+            echo "Pane not found: $target"
+            return 1
+        }
+        local window
+        window=$(tmux display-message -t "$target" -p "#{window_id}" 2>/dev/null)
+        tmux switch-client -t "$session"
+        tmux select-window -t "$window"
+        tmux select-pane -t "$target"
     else
-        echo "Session not found: $session_name"
-        return 1
+        # Treat as session name
+        if tmux list-sessions -F "#{session_name}" 2>/dev/null | grep -qxF "$target"; then
+            tmux switch-client -t "$target"
+        else
+            echo "Session not found: $target"
+            return 1
+        fi
     fi
 }
 
-# Jump to sessions with specific status
+# Jump to first pane with specific status
 jump_to_status() {
     local target_status="$1"
-    local sessions_data
-    sessions_data=$("$DETECTOR_SCRIPT" detect)
-    local matching_sessions=()
+    local panes_data
+    panes_data=$("$DETECTOR_SCRIPT" detect)
 
-    while IFS='|' read -r session status pane_count; do
-        if [[ -n "$session" && "$status" == "$target_status" ]]; then
-            matching_sessions+=("$session")
+    while IFS='|' read -r session pane_id project status; do
+        if [[ -n "$pane_id" && "$status" == "$target_status" ]]; then
+            switch_to_pane "$pane_id"
+            return 0
         fi
-    done <<< "$sessions_data"
+    done <<< "$panes_data"
 
-    if [[ ${#matching_sessions[@]} -gt 0 ]]; then
-        switch_to_session "${matching_sessions[0]}"
-    else
-        echo "No sessions found with status: $target_status"
-    fi
+    echo "No panes found with status: $target_status"
+    return 1
 }
 
 # fzf-powered session picker inside a tmux popup
@@ -84,15 +90,15 @@ show_session_picker() {
 detector="$1"
 selection_file="$2"
 
-sessions_data=$("$detector" detect)
-if [[ -z "$sessions_data" ]]; then
+panes_data=$("$detector" detect)
+if [[ -z "$panes_data" ]]; then
     echo "No Claude Code sessions found"
     sleep 2
     exit 0
 fi
 
 fzf_input=""
-while IFS="|" read -r session status pane_count; do
+while IFS="|" read -r session pane_id project status; do
     [[ -z "$session" ]] && continue
     icon="" color="" label=""
     case "$status" in
@@ -101,23 +107,27 @@ while IFS="|" read -r session status pane_count; do
         "idle")     icon="◯"; color="\033[38;2;139;147;166m"; label="idle" ;;
         *)          icon="◯"; color="\033[38;2;139;147;166m"; label="$status" ;;
     esac
-    suffix=""
-    [[ "$pane_count" -gt 1 ]] && suffix=" (${pane_count})"
-    fzf_input+="$(printf '%b%s %s%s — %s\033[0m' "$color" "$icon" "$session" "$suffix" "$label")"$'\n'
-done <<< "$sessions_data"
+    dim="\033[38;2;139;147;166m"
+    reset="\033[0m"
+    # Format: "pane_id\ticon project [session] — label" with ANSI colors
+    fzf_input+="$(printf '%s\t%b%s %s %b[%s]%b — %s%b' \
+        "$pane_id" "$color" "$icon" "$project" "$dim" "$session" "$color" "$label" "$reset")"$'\n'
+done <<< "$panes_data"
 
 selected=$(printf '%s' "$fzf_input" | fzf \
     --ansi \
+    --with-nth=2.. \
+    --delimiter=$'\t' \
     --header="enter=switch, esc=close" \
-    --preview="tmux capture-pane -e -t {2} -p -S -30 2>/dev/null || echo 'Preview unavailable'" \
+    --preview="tmux capture-pane -e -t {1} -p -S -30 2>/dev/null || echo 'Preview unavailable'" \
     --preview-window="right:50%" \
     --no-sort \
     --reverse)
 
 if [[ -n "$selected" ]]; then
-    # Extract session name: "icon session_name[suffix] — label" → session_name
-    session_name=$(echo "$selected" | sed 's/^[^ ]* //' | sed 's/ ([0-9]*)//;s/ — .*//')
-    echo "$session_name" > "$selection_file"
+    # Extract pane_id (first tab-separated field)
+    pane_id=$(echo "$selected" | cut -f1)
+    echo "$pane_id" > "$selection_file"
 fi
 PICKER_EOF
     chmod +x "$picker_script"
@@ -131,13 +141,13 @@ PICKER_EOF
     # Clean up script
     rm -f "$picker_script"
 
-    # After popup closes, switch to selected session
+    # After popup closes, switch to selected pane
     if [[ -f "$selection_file" ]]; then
-        local session_name
-        session_name=$(cat "$selection_file")
+        local pane_id
+        pane_id=$(cat "$selection_file")
         rm -f "$selection_file"
-        if [[ -n "$session_name" ]]; then
-            tmux switch-client -t "$session_name"
+        if [[ -n "$pane_id" ]]; then
+            switch_to_pane "$pane_id"
         fi
     fi
 }
@@ -163,7 +173,7 @@ main() {
             jump_to_status "idle"
             ;;
         "switch")
-            switch_to_session "$2"
+            switch_to_pane "$2"
             ;;
         "help"|*)
             echo "Claude Code Session Manager - tmux Integration"
@@ -175,10 +185,10 @@ main() {
             echo "  picker            Open fzf session picker"
             echo ""
             echo "Navigation Commands:"
-            echo "  jump-approval     Jump to sessions needing approval"
-            echo "  jump-active       Jump to active sessions"
-            echo "  jump-idle         Jump to idle sessions"
-            echo "  switch <session>  Switch to specific session"
+            echo "  jump-approval     Jump to pane needing approval"
+            echo "  jump-active       Jump to active pane"
+            echo "  jump-idle         Jump to idle pane"
+            echo "  switch <pane_id>  Switch to specific pane"
             echo ""
             echo "Example tmux.conf bindings:"
             echo "  bind-key g run-shell 'claude-session-manager show'"

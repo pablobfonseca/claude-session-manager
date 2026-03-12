@@ -59,14 +59,43 @@ bind-key G run-shell 'claude-session-manager picker'
 
 ## Detection
 
-The detector scans all tmux panes for the `claude` binary in the process tree (direct process or child). No session naming conventions required — it finds Claude wherever it's running.
+The detector scans all tmux panes (across all windows and sessions) for the `claude` binary in the process tree. No session naming conventions required — it finds Claude wherever it's running.
 
-Status is determined by analyzing the Claude pane's terminal output:
-- **approval**: Permission prompts (`Allow?`, `Do you want to proceed?`, `Yes/No`)
-- **active**: Spinner (`✳`) or tool execution markers (`⏺ Bash`, `⏺ Read`, etc.)
+Each Claude instance is shown individually by **project name** (basename of cwd) with its tmux session in brackets.
+
+### Status detection (two sources)
+
+**1. Claude Code hooks (preferred)** — Add Notification hooks to `~/.claude/settings.json` that write status via `claude-session-manager hook-status`:
+
+```json
+{
+  "hooks": {
+    "Notification": [
+      {
+        "matcher": "idle_prompt",
+        "hooks": [{
+          "type": "command",
+          "command": "input=$(cat); echo \"$input\" | claude-session-manager hook-status idle_prompt"
+        }]
+      },
+      {
+        "matcher": "permission_prompt",
+        "hooks": [{
+          "type": "command",
+          "command": "input=$(cat); echo \"$input\" | claude-session-manager hook-status permission_prompt"
+        }]
+      }
+    ]
+  }
+}
+```
+
+Status files are written to `/tmp/claude-session-manager/` and matched to tmux panes by `cwd`.
+
+**2. Terminal scraping (fallback)** — When no hook status is available, analyzes the pane's terminal output:
+- **active**: Spinner (`✳`) or tool execution markers
+- **approval**: Permission prompts (`Allow?`, `Do you want to proceed?`)
 - **idle**: Input prompt (`❯`) with no pending input
-
-Sessions with multiple Claude panes show the highest-priority status (approval > active > idle) and a pane count.
 
 ## Configuration
 

@@ -178,6 +178,11 @@ main() {
             esac
             ;;
 
+        # Hook integration (called from Claude Code hooks, stdin = JSON)
+        "hook-status")
+            "$DETECTOR_SCRIPT" write-status "$2"
+            ;;
+
         # Setup commands
         "install")
             install_manager
@@ -242,7 +247,7 @@ check_dependencies() {
 
 # Check tmux is running
 check_tmux_running() {
-    if [[ -z "$TMUX" ]] && [[ "${1}" != "help" ]] && [[ "${1}" != "version" ]] && [[ "${1}" != "install" ]]; then
+    if [[ -z "$TMUX" ]] && [[ "${1}" != "help" ]] && [[ "${1}" != "version" ]] && [[ "${1}" != "install" ]] && [[ "${1}" != "hook-status" ]]; then
         echo "❌ tmux not detected. Please run this command inside a tmux session."
         exit 1
     fi

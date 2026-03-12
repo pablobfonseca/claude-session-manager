@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 
 # Claude Code Session Detector
-# Detects and monitors Claude Code AI sessions across tmux environment
-# Only detects panes actually running the claude binary
+# Detects panes running the claude binary and determines their status
+# Uses hook-written status files when available, falls back to terminal scraping
 
 CONFIG_FILE="${HOME}/.config/claude-session-manager/config"
+HOOK_STATUS_DIR="/tmp/claude-session-manager"
 
 # Status indicators
 STATUS_ACTIVE="●"
@@ -56,23 +57,32 @@ _pane_has_claude() {
     return 1
 }
 
-# Find all panes running Claude across all sessions
-# Output: session_name|pane_id per line
-find_claude_panes() {
-    local sessions
-    sessions=$(tmux list-sessions -F "#{session_name}" 2>/dev/null) || return
+# Get status from hook-written file, matched by cwd
+# Hook files: /tmp/claude-session-manager/<session_id>
+# Format: status|cwd|timestamp
+_get_hook_status() {
+    local pane_cwd="$1"
+    [[ -d "$HOOK_STATUS_DIR" ]] || return 1
 
-    for session in $sessions; do
-        local pane_info
-        pane_info=$(tmux list-panes -t "$session" -s -F "#{pane_id} #{pane_pid}" 2>/dev/null) || continue
+    local now
+    now=$(date +%s)
 
-        while read -r pane_id pane_pid; do
-            [[ -z "$pane_id" ]] && continue
-            if _pane_has_claude "$pane_pid"; then
-                echo "$session|$pane_id"
+    for status_file in "$HOOK_STATUS_DIR"/*; do
+        [[ -f "$status_file" ]] || continue
+        local file_status file_cwd file_ts
+        IFS='|' read -r file_status file_cwd file_ts < "$status_file"
+
+        # Match by cwd
+        if [[ "$file_cwd" == "$pane_cwd" ]]; then
+            # Only trust if recent (< 120s)
+            local age=$((now - file_ts))
+            if [[ $age -lt 120 ]]; then
+                echo "$file_status"
+                return 0
             fi
-        done <<< "$pane_info"
+        fi
     done
+    return 1
 }
 
 # Analyze a single Claude pane's terminal output to determine status
@@ -80,21 +90,34 @@ find_claude_panes() {
 analyze_pane_status() {
     local pane_id="$1"
 
-    # Capture the last 20 lines of pane output
+    # First: check hook-written status files (most reliable)
+    local pane_cwd
+    pane_cwd=$(tmux display-message -t "$pane_id" -p "#{pane_current_path}" 2>/dev/null)
+    if [[ -n "$pane_cwd" ]]; then
+        local hook_status
+        hook_status=$(_get_hook_status "$pane_cwd") && {
+            echo "$hook_status"
+            return
+        }
+    fi
+
+    # Fallback: scrape terminal output
     local output
     output=$(tmux capture-pane -t "$pane_id" -p -S -20 2>/dev/null) || {
         echo "idle"
         return
     }
 
-    # Strip empty lines from the bottom to find the last meaningful content
-    # The status bar is the very last line; content is above it
     local last_lines
     last_lines=$(echo "$output" | sed '/^[[:space:]]*$/d' | tail -10)
 
-    # 1. Check for approval/permission prompts (highest priority)
-    #    Claude Code shows these when waiting for tool approval
-    #    Exclude the status bar line (contains "accept edits" mode indicator)
+    # Check for active work (spinner, tool execution)
+    if echo "$last_lines" | grep -qE '(✳|⏺.*Running|⏺.*Bash|⏺.*Read|⏺.*Write|⏺.*Edit|⏺.*Glob|⏺.*Grep|⏺.*Agent)'; then
+        echo "active"
+        return
+    fi
+
+    # Check for approval/permission prompts
     local content_lines
     content_lines=$(echo "$output" | sed '/^[[:space:]]*$/d' | sed '$ d' | tail -5)
     if echo "$content_lines" | grep -qiE '(Allow|Approve|Do you want|permission|Yes.*No.*All)'; then
@@ -102,25 +125,13 @@ analyze_pane_status() {
         return
     fi
 
-    # 2. Check for active work (spinner, tool execution)
-    #    Claude Code shows ✳ spinner when thinking/working
-    #    Also shows ⏺ when executing tools
-    if echo "$last_lines" | grep -qE '(✳|⏺.*Running|⏺.*Bash|⏺.*Read|⏺.*Write|⏺.*Edit|⏺.*Glob|⏺.*Grep|⏺.*Agent)'; then
-        echo "active"
-        return
-    fi
-
-    # 3. Check for the idle prompt ❯
-    #    When Claude is waiting for user input, the prompt line shows ❯
-    #    It appears near the bottom, above the status bar
+    # Check for idle prompt
     if echo "$last_lines" | grep -qE '^❯[[:space:]]*$'; then
         echo "idle"
         return
     fi
 
-    # 4. Fallback: check session activity timestamp
-    local session_name
-    session_name=$(tmux display-message -t "$pane_id" -p "#{session_name}" 2>/dev/null)
+    # Fallback: activity timestamp
     local last_activity
     last_activity=$(tmux display-message -t "$pane_id" -p "#{session_activity}" 2>/dev/null || echo "0")
     local now
@@ -134,62 +145,69 @@ analyze_pane_status() {
     fi
 }
 
-# Get all Claude sessions with aggregated status
-# Output: session_name|status|pane_count per line
-get_claude_sessions() {
+# Find all Claude panes with their status
+# Output: session|pane_id|project|status per line
+get_claude_panes() {
     if ! tmux list-sessions >/dev/null 2>&1; then
         return
     fi
 
-    local claude_panes
-    claude_panes=$(find_claude_panes)
+    local sessions
+    sessions=$(tmux list-sessions -F "#{session_name}" 2>/dev/null) || return
 
-    if [[ -z "$claude_panes" ]]; then
-        return
-    fi
+    for session in $sessions; do
+        local pane_info
+        pane_info=$(tmux list-panes -t "$session" -s -F "#{pane_id} #{pane_pid}" 2>/dev/null) || continue
 
-    # Collect statuses per session
-    # Use temp files to aggregate since bash associative arrays
-    # don't preserve insertion order reliably
-    local tmpdir="/tmp/claude_detect.$$"
-    mkdir -p "$tmpdir"
-
-    while IFS='|' read -r session pane_id; do
-        [[ -z "$session" ]] && continue
-        local status
-        status=$(analyze_pane_status "$pane_id")
-        echo "$status" >> "$tmpdir/$session"
-    done <<< "$claude_panes"
-
-    # Aggregate: pick highest priority status per session
-    # Priority: approval > active > idle
-    for session_file in "$tmpdir"/*; do
-        [[ -f "$session_file" ]] || continue
-        local session_name
-        session_name=$(basename "$session_file")
-        local pane_count
-        pane_count=$(wc -l < "$session_file" | tr -d ' ')
-
-        local final_status="idle"
-        if grep -q "approval" "$session_file"; then
-            final_status="approval"
-        elif grep -q "active" "$session_file"; then
-            final_status="active"
-        fi
-
-        echo "$session_name|$final_status|$pane_count"
+        while read -r pane_id pane_pid; do
+            [[ -z "$pane_id" ]] && continue
+            if _pane_has_claude "$pane_pid"; then
+                local status
+                status=$(analyze_pane_status "$pane_id")
+                local pane_cwd
+                pane_cwd=$(tmux display-message -t "$pane_id" -p "#{pane_current_path}" 2>/dev/null || echo "unknown")
+                local project
+                project=$(basename "$pane_cwd")
+                echo "$session|$pane_id|$project|$status"
+            fi
+        done <<< "$pane_info"
     done
-
-    rm -rf "$tmpdir"
 }
 
-# Format session for display
-format_session_display() {
-    local session_name="$1"
-    local status="$2"
-    local pane_count="$3"
-    local max_width="${4:-25}"
-    local format="${5:-tmux}"
+# Write status from a Claude hook notification
+# Called by hook commands with: write-status <notification_type>
+# Reads JSON payload from stdin
+write_hook_status() {
+    local notification_type="$1"
+    mkdir -p "$HOOK_STATUS_DIR"
+
+    local payload
+    payload=$(cat)
+
+    local session_id cwd
+    session_id=$(echo "$payload" | jq -r '.session_id // empty')
+    cwd=$(echo "$payload" | jq -r '.cwd // empty')
+
+    [[ -z "$session_id" || -z "$cwd" ]] && return 1
+
+    local status
+    case "$notification_type" in
+        "permission_prompt") status="approval" ;;
+        "idle_prompt")       status="idle" ;;
+        *)                   status="idle" ;;
+    esac
+
+    local now
+    now=$(date +%s)
+    echo "${status}|${cwd}|${now}" > "$HOOK_STATUS_DIR/$session_id"
+}
+
+# Format a single pane entry for display
+format_pane_display() {
+    local session="$1"
+    local project="$2"
+    local status="$3"
+    local format="${4:-ansi}"
 
     local indicator="" color="" label=""
 
@@ -200,36 +218,28 @@ format_session_display() {
         *)          indicator="$STATUS_IDLE";      color="$COLOR_IDLE";     label="$status" ;;
     esac
 
-    local display_name="$session_name"
-    if [[ ${#session_name} -gt $((max_width - 3)) ]]; then
-        display_name="${session_name:0:$((max_width - 6))}..."
-    fi
-
-    local pane_suffix=""
-    if [[ "$pane_count" -gt 1 ]]; then
-        pane_suffix=" (${pane_count})"
-    fi
-
     if [[ "$format" == "ansi" ]]; then
         local ansi_color
         ansi_color=$(hex_to_ansi "$color")
-        echo "${ansi_color}${indicator} ${display_name}${pane_suffix} — ${label}${ANSI_RESET}"
+        local dim
+        dim=$(hex_to_ansi "$COLOR_IDLE")
+        echo "${ansi_color}${indicator} ${project}${ANSI_RESET} ${dim}[${session}]${ANSI_RESET} ${ansi_color}— ${label}${ANSI_RESET}"
     else
-        echo "#[fg=$color]$indicator $display_name$pane_suffix — $label#[default]"
+        echo "#[fg=$color]$indicator $project#[default] #[fg=$COLOR_IDLE][$session]#[default] #[fg=$color]— $label#[default]"
     fi
 }
 
-# Generate popup/sidebar content
+# Generate popup content
 generate_sidebar_content() {
     local format="tmux"
     if [[ "$1" == "--ansi" ]]; then
         format="ansi"
     fi
 
-    local sessions_data
-    sessions_data=$(get_claude_sessions)
+    local panes_data
+    panes_data=$(get_claude_panes)
     local content=""
-    local session_count=0
+    local count=0
 
     # Header
     if [[ "$format" == "ansi" ]]; then
@@ -244,16 +254,15 @@ generate_sidebar_content() {
         content+="#[fg=$COLOR_IDLE]───────────────────────#[default]"$'\n'
     fi
 
-    # Sessions
-    if [[ -n "$sessions_data" ]]; then
-        while IFS='|' read -r session status pane_count; do
+    if [[ -n "$panes_data" ]]; then
+        while IFS='|' read -r session pane_id project status; do
             [[ -z "$session" ]] && continue
-            content+="$(format_session_display "$session" "$status" "$pane_count" 25 "$format")"$'\n'
-            ((session_count++))
-        done <<< "$sessions_data"
+            content+="$(format_pane_display "$session" "$project" "$status" "$format")"$'\n'
+            ((count++))
+        done <<< "$panes_data"
     fi
 
-    if [[ $session_count -eq 0 ]]; then
+    if [[ $count -eq 0 ]]; then
         if [[ "$format" == "ansi" ]]; then
             local dim_color
             dim_color=$(hex_to_ansi "$COLOR_IDLE")
@@ -290,16 +299,18 @@ main() {
 
     case "${1:-sidebar}" in
         "detect")
-            get_claude_sessions
+            get_claude_panes
             ;;
         "sidebar")
             shift
             generate_sidebar_content "$@"
             ;;
+        "write-status")
+            write_hook_status "$2"
+            ;;
         "status")
             local session="${2:-}"
             if [[ -n "$session" ]]; then
-                # Find claude panes in this specific session
                 local panes
                 panes=$(tmux list-panes -t "$session" -s -F "#{pane_id} #{pane_pid}" 2>/dev/null) || {
                     echo "unknown"
@@ -319,19 +330,18 @@ main() {
             fi
             ;;
         "list")
-            get_claude_sessions | while IFS='|' read -r session status pane_count; do
+            get_claude_panes | while IFS='|' read -r session pane_id project status; do
                 [[ -z "$session" ]] && continue
-                local suffix=""
-                [[ "$pane_count" -gt 1 ]] && suffix=" (${pane_count} panes)"
-                echo "$session: $status$suffix"
+                echo "$project [$session] — $status"
             done
             ;;
         *)
-            echo "Usage: $0 {detect|sidebar|status|list}"
-            echo "  detect   - Get all Claude sessions data"
-            echo "  sidebar  - Generate popup content"
-            echo "  status   - Get specific session status"
-            echo "  list     - List all Claude sessions with status"
+            echo "Usage: $0 {detect|sidebar|status|list|write-status}"
+            echo "  detect        - Get all Claude panes data"
+            echo "  sidebar       - Generate popup content"
+            echo "  status        - Get specific session status"
+            echo "  list          - List all Claude instances with status"
+            echo "  write-status  - Write status from hook (stdin: JSON)"
             exit 1
             ;;
     esac
