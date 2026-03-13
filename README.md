@@ -6,6 +6,10 @@ Detects panes running the `claude` binary, analyzes their terminal output to det
 
 ![tmux](https://img.shields.io/badge/tmux-3.0%2B-green) ![bash](https://img.shields.io/badge/bash-4.0%2B-blue) ![fzf](https://img.shields.io/badge/fzf-required-orange)
 
+<p align="center">
+  <img src="docs/screenshot.png" alt="Claude Code Session Manager picker" width="600">
+</p>
+
 ## Status Indicators
 
 | Indicator | Status | Meaning |
