@@ -293,6 +293,31 @@ generate_sidebar_content() {
     echo "$content"
 }
 
+# Generate compact tmux status bar widget
+generate_widget() {
+    local panes_data
+    panes_data=$(get_claude_panes)
+
+    [[ -z "$panes_data" ]] && return 0
+
+    local active=0 approval=0 idle=0
+    while IFS='|' read -r _ _ _ status; do
+        case "$status" in
+            "active")   ((active++)) ;;
+            "approval") ((approval++)) ;;
+            "idle")     ((idle++)) ;;
+        esac
+    done <<< "$panes_data"
+
+    if [[ $approval -gt 0 ]]; then
+        printf '#[fg=%s]%s %d#[default] ' "$COLOR_APPROVAL" "$STATUS_APPROVAL" "$approval"
+    elif [[ $active -gt 0 ]]; then
+        printf '#[fg=%s]%s %d#[default] ' "$COLOR_ACTIVE" "$STATUS_ACTIVE" "$active"
+    elif [[ $idle -gt 0 ]]; then
+        printf '#[fg=%s]%s %d#[default] ' "$COLOR_IDLE" "$STATUS_IDLE" "$idle"
+    fi
+}
+
 # Main
 main() {
     load_config
@@ -335,12 +360,16 @@ main() {
                 echo "$project [$session] — $status"
             done
             ;;
+        "widget")
+            generate_widget
+            ;;
         *)
-            echo "Usage: $0 {detect|sidebar|status|list|write-status}"
+            echo "Usage: $0 {detect|sidebar|status|list|widget|write-status}"
             echo "  detect        - Get all Claude panes data"
             echo "  sidebar       - Generate popup content"
             echo "  status        - Get specific session status"
             echo "  list          - List all Claude instances with status"
+            echo "  widget        - Compact tmux status bar segment"
             echo "  write-status  - Write status from hook (stdin: JSON)"
             exit 1
             ;;

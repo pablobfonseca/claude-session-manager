@@ -42,6 +42,7 @@ show_help() {
     echo "  list              List all Claude Code sessions with status"
     echo "  status <session>  Get status of specific session"
     echo "  switch <session>  Switch to specific Claude Code session"
+    echo "  widget            Compact tmux status bar segment"
     echo ""
     echo "🚀 Quick Navigation:"
     echo "  jump approval     Jump to sessions needing approval"
@@ -176,6 +177,11 @@ main() {
                     exit 1
                     ;;
             esac
+            ;;
+
+        # Status bar widget
+        "widget")
+            "$DETECTOR_SCRIPT" widget
             ;;
 
         # Hook integration (called from Claude Code hooks, stdin = JSON)
