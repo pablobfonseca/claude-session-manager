@@ -48,6 +48,12 @@ show_help() {
     echo "  jump active       Jump to active sessions"
     echo "  jump idle         Jump to idle sessions"
     echo ""
+    echo "🧠 Context Management (NEW in OpenClaw 2026.3.12):"
+    echo "  context monitor [session]    Monitor context usage across sessions"
+    echo "  context analyze <session>    Analyze context patterns and health"
+    echo "  context suggest <session>    Get context optimization suggestions"
+    echo "  context cleanup               Clean old context monitoring logs"
+    echo ""
     echo "⚙️  Setup Commands:"
     echo "  install           Install and configure Claude Session Manager"
     echo "  uninstall         Remove configuration"
@@ -181,6 +187,28 @@ main() {
         # Hook integration (called from Claude Code hooks, stdin = JSON)
         "hook-status")
             "$DETECTOR_SCRIPT" write-status "$2"
+            ;;
+
+        # Context management commands (NEW in OpenClaw 2026.3.12)
+        "context")
+            case "$2" in
+                "monitor")
+                    "$SCRIPT_DIR/src/advanced_context_monitor.sh" monitor "$3"
+                    ;;
+                "analyze")
+                    "$SCRIPT_DIR/src/advanced_context_monitor.sh" analyze "$3" "$4"
+                    ;;
+                "suggest")
+                    "$SCRIPT_DIR/src/advanced_context_monitor.sh" suggest "$3"
+                    ;;
+                "cleanup")
+                    "$SCRIPT_DIR/src/advanced_context_monitor.sh" cleanup
+                    ;;
+                *)
+                    echo "Usage: $0 context {monitor|analyze|suggest|cleanup} [args]"
+                    exit 1
+                    ;;
+            esac
             ;;
 
         # Setup commands
