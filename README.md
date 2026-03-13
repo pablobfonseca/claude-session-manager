@@ -48,6 +48,9 @@ claude-session-manager jump approval    # needs your attention
 claude-session-manager jump active      # currently working
 claude-session-manager jump idle        # waiting for input
 
+# Compact status bar widget (for tmux status-right)
+claude-session-manager widget
+
 # Check specific session status
 claude-session-manager status <session>
 
@@ -61,6 +64,22 @@ claude-session-manager switch <pane_id>
 bind-key g run-shell 'claude-session-manager show'
 bind-key G run-shell 'claude-session-manager picker'
 ```
+
+### Status bar widget
+
+The `widget` command outputs a compact tmux-formatted segment for embedding in `status-right`:
+
+```tmux
+set -ga status-right "#(claude-session-manager widget)"
+```
+
+Shows the highest-priority status with a count:
+- `⏸ 2` (yellow) — sessions waiting for approval
+- `● 3` (green) — sessions actively working
+- `◯ 1` (gray) — only idle sessions
+- *(empty)* — no Claude sessions running
+
+If you use the [cyberpunk-theme](https://github.com/pablobfonseca/cyberpunk-theme), the widget is built in — just set `@cyberpunk_claude_sessions "yes"` in your tmux.conf.
 
 ## Detection
 
