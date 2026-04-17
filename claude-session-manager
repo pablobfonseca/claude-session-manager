@@ -2,7 +2,7 @@
 
 # Claude Code Session Manager
 # Main entry point for managing Claude Code AI sessions in tmux
-# Author: Shikamaru <shikamarunaraclaw@gmail.com>
+# Author: Pablo Fonseca <pablobfonseca777@gmail.com>
 
 SCRIPT_SOURCE="${BASH_SOURCE[0]}"
 while [[ -L "$SCRIPT_SOURCE" ]]; do
@@ -25,7 +25,7 @@ chmod +x "$TMUX_SCRIPT" "$DETECTOR_SCRIPT" 2>/dev/null || true
 # Show version information
 show_version() {
     echo "Claude Code Session Manager v$VERSION"
-    echo "Repository: https://github.com/shikamarunaraclaw/claude-session-manager"
+    echo "Repository: https://github.com/pablobfonseca/claude-session-manager"
 }
 
 # Show help information

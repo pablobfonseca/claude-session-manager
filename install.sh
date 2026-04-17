@@ -2,7 +2,7 @@
 
 # Claude Code Session Manager Installer
 # Quick installation script with PATH integration
-# Author: Shikamaru <shikamarunaraclaw@gmail.com>
+# Author: Pablo Fonseca <pablobfonseca777@gmail.com>
 
 INSTALL_DIR="/usr/local/bin"
 SCRIPT_NAME="claude-session-manager"

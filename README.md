@@ -12,16 +12,16 @@ Detects panes running the `claude` binary, analyzes their terminal output to det
 
 ## Status Indicators
 
-| Indicator | Status | Meaning |
-|-----------|--------|---------|
-| ● green | **active** | Claude is working (spinner, tool execution) |
-| ⏸ yellow | **approval** | Claude needs permission to proceed |
-| ◯ gray | **idle** | Waiting for user input at `❯` prompt |
+| Indicator | Status       | Meaning                                     |
+| --------- | ------------ | ------------------------------------------- |
+| ● green   | **active**   | Claude is working (spinner, tool execution) |
+| ⏸ yellow  | **approval** | Claude needs permission to proceed          |
+| ◯ gray    | **idle**     | Waiting for user input at `❯` prompt        |
 
 ## Installation
 
 ```bash
-git clone https://github.com/shikamarunaraclaw/claude-session-manager.git
+git clone https://github.com/pablobfonseca/claude-session-manager.git
 cd claude-session-manager
 ./install.sh
 ```
@@ -74,10 +74,11 @@ set -ga status-right "#(claude-session-manager widget)"
 ```
 
 Shows the highest-priority status with a count:
+
 - `⏸ 2` (yellow) — sessions waiting for approval
 - `● 3` (green) — sessions actively working
 - `◯ 1` (gray) — only idle sessions
-- *(empty)* — no Claude sessions running
+- _(empty)_ — no Claude sessions running
 
 If you use the [cyberpunk-theme](https://github.com/pablobfonseca/cyberpunk-theme), the widget is built in — just set `@cyberpunk_claude_sessions "yes"` in your tmux.conf.
 
@@ -97,17 +98,21 @@ Each Claude instance is shown individually by **project name** (basename of cwd)
     "Notification": [
       {
         "matcher": "idle_prompt",
-        "hooks": [{
-          "type": "command",
-          "command": "input=$(cat); echo \"$input\" | claude-session-manager hook-status idle_prompt"
-        }]
+        "hooks": [
+          {
+            "type": "command",
+            "command": "input=$(cat); echo \"$input\" | claude-session-manager hook-status idle_prompt"
+          }
+        ]
       },
       {
         "matcher": "permission_prompt",
-        "hooks": [{
-          "type": "command",
-          "command": "input=$(cat); echo \"$input\" | claude-session-manager hook-status permission_prompt"
-        }]
+        "hooks": [
+          {
+            "type": "command",
+            "command": "input=$(cat); echo \"$input\" | claude-session-manager hook-status permission_prompt"
+          }
+        ]
       }
     ]
   }
@@ -117,6 +122,7 @@ Each Claude instance is shown individually by **project name** (basename of cwd)
 Status files are written to `/tmp/claude-session-manager/` and matched to tmux panes by `cwd`.
 
 **2. Terminal scraping (fallback)** — When no hook status is available, analyzes the pane's terminal output:
+
 - **active**: Spinner (`✳`) or tool execution markers
 - **approval**: Permission prompts (`Allow?`, `Do you want to proceed?`)
 - **idle**: Input prompt (`❯`) with no pending input
@@ -171,6 +177,7 @@ claude-session-manager/
 ### Reporting Issues
 
 Open an issue with:
+
 - tmux version (`tmux -V`)
 - bash version (`bash --version`)
 - macOS or Linux
