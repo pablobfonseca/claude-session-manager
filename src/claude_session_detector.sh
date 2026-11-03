@@ -174,8 +174,9 @@ get_claude_panes() {
     done
 }
 
-# Write status from a Claude hook notification
-# Called by hook commands with: write-status <notification_type>
+# Write status from a Claude Code hook
+# Called by hook commands with: write-status <event>
+# Events: permission_prompt, idle_prompt, active, stop
 # Reads JSON payload from stdin
 write_hook_status() {
     local notification_type="$1"
@@ -193,7 +194,8 @@ write_hook_status() {
     local status
     case "$notification_type" in
         "permission_prompt") status="approval" ;;
-        "idle_prompt")       status="idle" ;;
+        "active")            status="active" ;;
+        "idle_prompt"|"stop") status="idle" ;;
         *)                   status="idle" ;;
     esac
 

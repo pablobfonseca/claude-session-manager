@@ -90,11 +90,41 @@ Each Claude instance is shown individually by **project name** (basename of cwd)
 
 ### Status detection (two sources)
 
-**1. Claude Code hooks (preferred)** — Add Notification hooks to `~/.claude/settings.json` that write status via `claude-session-manager hook-status`:
+**1. Claude Code hooks (preferred)** — Add hooks to `~/.claude/settings.json` that write status via `claude-session-manager hook-status`:
 
 ```json
 {
   "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "input=$(cat); echo \"$input\" | claude-session-manager hook-status active"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "input=$(cat); echo \"$input\" | claude-session-manager hook-status active"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "input=$(cat); echo \"$input\" | claude-session-manager hook-status stop"
+          }
+        ]
+      }
+    ],
     "Notification": [
       {
         "matcher": "idle_prompt",
@@ -119,7 +149,7 @@ Each Claude instance is shown individually by **project name** (basename of cwd)
 }
 ```
 
-Status files are written to `/tmp/claude-session-manager/` and matched to tmux panes by `cwd`.
+`UserPromptSubmit` and `PostToolUse` mark the session as working (including after you approve a permission prompt), `Stop` marks it idle as soon as Claude finishes, and the `Notification` hooks mark prompts that need approval. Status files are written to `/tmp/claude-session-manager/` and matched to tmux panes by `cwd`.
 
 **2. Terminal scraping (fallback)** — When no hook status is available, analyzes the pane's terminal output:
 
